@@ -1,5 +1,4 @@
 
-struct termios orig_termios;   Here we are creating a struct which has termios and orig_termios which takes the original attributes of the file 
 
 
 
