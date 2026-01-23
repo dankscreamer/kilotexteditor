@@ -25,7 +25,7 @@ void enableRawMode(void) {
 int main(void) {
   enableRawMode();
   char c;
-  while (read(STDIN_FILENO, &c, 1) == 1 && c != 'q') {
+  while (read(STDIN_FILENO, &c, 1) == 1 && c != 'e') {
     if (iscntrl(c)) {
       printf("%d\r\n", c);
     } else {
