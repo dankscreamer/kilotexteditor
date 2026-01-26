@@ -17,6 +17,11 @@ struct abuf{
     int len;
 
     };
+
+
+
+
+
 void abAppend(struct abuf *ab, const char *s, int len) {
   char *new = realloc(ab->b, ab->len + len);
   if (new == NULL) return;
@@ -24,6 +29,10 @@ void abAppend(struct abuf *ab, const char *s, int len) {
   ab->b = new;
   ab->len += len;
 }
+
+
+
+
 void abFree(struct abuf *ab) {
   free(ab->b);
 }
@@ -58,7 +67,12 @@ char editorReadKey(void){
         if (nread == -1 && errno != EAGAIN) die("read");
             
         }
-        return c;}
+return c;}
+
+
+
+
+
 int getCursorPosition(int *rows, int *cols) {
   char buf[32];
   unsigned int i = 0;
@@ -73,6 +87,9 @@ int getCursorPosition(int *rows, int *cols) {
   if (sscanf(&buf[2], "%d;%d", rows, cols) != 2) return -1;
   return 0;
 }
+
+
+
 
 int getWindowSize(int *rows,int *cols){
     struct winsize ws;
@@ -167,8 +184,9 @@ int main(void) {
   initEditor();
   while (1) {
       editorRefreshScreen();
+      printf("%c",nread);
 
       editorProcessKeypress();
       }
-  return 0;
+       return 0;
 }
