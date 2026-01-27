@@ -184,8 +184,7 @@ int main(void) {
   initEditor();
   while (1) {
       editorRefreshScreen();
-      printf("%c",nread);
-
+      
       editorProcessKeypress();
       }
        return 0;
