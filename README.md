@@ -2,7 +2,11 @@
 
 
 
-A minimal terminal text editor implementation in C that demonstrates low-level terminal control using POSIX system calls and raw mode. This project is designed to help understand how text editors like Vim and Nano work under the hood.
+This project is based on the "Build Your Own Text Editor" (kilo) tutorial
+by Salvatore Sanfilippo.
+
+The code was written for learning purposes.
+Inline comments and explanations were assisted by AI tools.
 
 ## What This Program Does
 

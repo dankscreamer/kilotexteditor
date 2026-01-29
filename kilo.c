@@ -1,330 +1,143 @@
 /*** Includes ***/
-#include <ctype.h>   // Character classification helpers
-#include <errno.h>   // errno and error codes like EAGAIN
-#include <stdio.h>   // perror()
-#include <stdlib.h>  // exit(), atexit()
-#include <termios.h> // Terminal control (raw / canonical mode)
-#include <unistd.h>  // read(), STDIN_FILENO
-#include <sys/ioctl.h>
+#include <ctype.h>      // iscntrl(), isdigit() etc. (used later for key handling)
+#include <errno.h>      // errno values like EAGAIN for non-blocking read()
+#include <stdio.h>      // perror() for readable error messages
+#include <stdlib.h>     // exit(), atexit()
+#include <termios.h>    // terminal control (raw vs canonical mode)
+#include <unistd.h>     // read(), write(), STDIN_FILENO, STDOUT_FILENO
+#include <sys/ioctl.h>  // ioctl(), TIOCGWINSZ for terminal size
 
 /*** Macros ***/
-
-/*
- * Maps Ctrl + letter to the corresponding ASCII control character.
- *
- * ASCII control characters are created by masking the lower 5 bits.
- * Example:
- *   'q'  = 113 (0b01110001)
- *   0x1f =  31 (0b00011111)
- *   ---------------------
- *   Ctrl-Q = 17
- *
- * This allows us to detect key combinations like Ctrl-Q, Ctrl-C, etc.
- */
-#define CTRL_KEY(k) ((k) & 0x1f)
+#define CTRL_KEY(k) ((k) & 0x1f)   // Maps Ctrl+<key> to its ASCII control code
 
 /*** Global Data ***/
+struct editorConfig {
+    int screenrows;                // Number of rows in the terminal
+    int screencols;                // Number of columns in the terminal
+    struct termios orig_termios;   // Original terminal settings (to restore later)
+};
 
-/*
- * Stores the original terminal settings.
- * We must restore these before exiting, otherwise the user's shell
- * will remain stuck in raw mode (very bad UX).
- */
-struct editorConfig{
-    int screenrows;
-    int screencols;
-    struct termios orig_termios;
+struct editorConfig E;             // Global editor state
 
-
-    };
-struct editorConfig E;
 /*** Terminal Control ***/
-
-/*
- * Fatal error handler.
- *
- * Before printing the error, we:
- *  - Clear the screen
- *  - Move the cursor to the top-left corner
- *
- * This ensures the error message is visible even if the editor
- * was mid-draw when the failure occurred.
- */
-
 void die(const char *s) {
-     write(STDOUT_FILENO,"\x1b[2J",4);
-    write(STDOUT_FILENO,"\x1b[H",3);
-
-  perror(s);
-  exit(1);
+    write(STDOUT_FILENO, "\x1b[2J", 4);  // Clear entire screen
+    write(STDOUT_FILENO, "\x1b[H", 3);   // Move cursor to top-left
+    perror(s);                           // Print error message based on errno
+    exit(1);                             // Exit with failure status
 }
 
-/*
- * Restores the terminal to its original (canonical) mode.
- * This function is registered with atexit(), so it runs
- * automatically when the program exits.
- */
 void disableRawMode(void) {
-  if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &E.orig_termios) == -1)
-    die("tcsetattr");
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &E.orig_termios); // Restore original terminal state
 }
 
-/*
- * Enables raw mode by modifying terminal flags.
- *
- * Raw mode disables:
- *  - Line buffering (no waiting for Enter)
- *  - Echoing typed characters
- *  - Signal generation (Ctrl-C, Ctrl-Z)
- *  - Input/output post-processing
- *
- * This allows us to read each keypress immediately.
- */
 void enableRawMode(void) {
-  /* Read current terminal attributes */
-  if (tcgetattr(STDIN_FILENO, &E.orig_termios) == -1)
-    die("tcgetattr");
+    tcgetattr(STDIN_FILENO, &E.orig_termios); // Read current terminal attributes
+    atexit(disableRawMode);                   // Ensure terminal is restored on exit
 
-  /* Ensure terminal is restored on exit */
-  atexit(disableRawMode);
+    struct termios raw = E.orig_termios;      // Make a modifiable copy
 
-  /* Create a modifiable copy of the original settings */
-  struct termios raw = E.orig_termios;
+    raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON); // Disable special input processing
+    raw.c_oflag &= ~(OPOST);                                   // Disable output post-processing
+    raw.c_cflag |= (CS8);                                     // Force 8-bit characters
+    raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);          // Disable echo, canonical mode & signals
 
-  /*
-   * Input flags:
-   *  - BRKINT  : disable Ctrl-Break
-   *  - ICRNL   : disable carriage return -> newline translation
-   *  - INPCK   : disable input parity checking
-   *  - ISTRIP  : disable stripping 8th bit
-   *  - IXON    : disable Ctrl-S / Ctrl-Q flow control
-   */
-  raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
+    raw.c_cc[VMIN] = 0;       // read() returns immediately
+    raw.c_cc[VTIME] = 1;      // read() waits up to 100ms
 
-  /*
-   * Output flags:
-   *  - OPOST : disable output post-processing
-   */
-  raw.c_oflag &= ~(OPOST);
-
-  /*
-   * Control flags:
-   *  - CS8 : force 8-bit characters
-   */
-  raw.c_cflag |= (CS8);
-
-  /*
-   * Local flags:
-   *  - ECHO   : disable echoing input
-   *  - ICANON : disable canonical mode (line buffering)
-   *  - IEXTEN : disable Ctrl-V and similar extensions
-   *  - ISIG   : disable signals (Ctrl-C, Ctrl-Z)
-   */
-  raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
-
-  /*
-   * Control characters:
-   *
-   * VMIN  = 0  → read() returns immediately
-   * VTIME = 1  → read() waits up to 100ms
-   *
-   * This makes input non-blocking with a short timeout.
-   */
-  raw.c_cc[VMIN] = 0;
-  raw.c_cc[VTIME] = 1;
-
-  /* Apply the modified settings */
-  if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1)
-    die("tcsetattr");
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw); // Apply raw mode settings
 }
 
-/*
- * Reads a single keypress from stdin.
- *
- * In raw mode, read() returns as soon as input is available.
- * If no input is present, it may return -1 with errno = EAGAIN,
- * in which case we retry.
- */
 char editorReadKey(void) {
-  int nread;
-  char c;
+    int nread;
+    char c;
 
-  while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
-    if (nread == -1 && errno != EAGAIN)
-      die("read");
-  }
-
-  return c;
+    while ((nread = read(STDIN_FILENO, &c, 1)) != 1) { // Read single byte
+        if (nread == -1 && errno != EAGAIN)            // Ignore temporary unavailability
+            die("read");
+    }
+    return c;                                          // Return pressed key
 }
 
-
-
-int getCursorPosition(int *rows,int*cols){
-    char buf[32];
+int getCursorPosition(int *rows, int *cols) {
+    char buf[32];                                      // Buffer for terminal response
     unsigned int i = 0;
-    if (write(STDOUT_FILENO, "\x1b[6n", 4) != 4) return -1;
 
-    while (i<sizeof(buf)-1){
-        if(read(STDIN_FILENO,&buf[i],1)!=1)break;
-        if(buf[i]=='R')break;
+    write(STDOUT_FILENO, "\x1b[6n", 4);                // Ask terminal for cursor position
+
+    while (i < sizeof(buf) - 1) {                      // Read response byte-by-byte
+        if (read(STDIN_FILENO, &buf[i], 1) != 1) break;
+        if (buf[i] == 'R') break;                      // End of response
         i++;
-        }
-        buf[i]='\0';
-        if (buf[0]!='\x1b' || buf[1] != '[')return -1;
-        if (sscanf(&buf[2],"%d;%d",rows,cols)!=2) return -1;
-        return 0;
-      } 
-
-
-   
-
-int getWindowSize(int *rows, int *cols){
-    struct winsize ws;
-
-    if (ioctl(STDOUT_FILENO,TIOCGWINSZ,&ws)==-1 || ws.ws_col==0){
-        if(write(STDOUT_FILENO,"\x1b[999C\x1b[999B",12)!=12) return -1;
-        return getCursorPosition(rows,cols);
-         }else{
-            *cols=ws.ws_col;
-            *rows=ws.ws_row;
-            return 0;
-        }
     }
+
+    buf[i] = '\0';                                     // Null-terminate string
+
+    if (buf[0] != '\x1b' || buf[1] != '[') return -1;  // Validate escape sequence
+    if (sscanf(&buf[2], "%d;%d", rows, cols) != 2)     // Parse row;column
+        return -1;
+
+    return 0;                                          // Success
+}
+
+int getWindowSize(int *rows, int *cols) {
+    struct winsize ws;                                 // Kernel-defined terminal size struct
+
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
+        write(STDOUT_FILENO, "\x1b[999C\x1b[999B", 12); // Move cursor to bottom-right
+        return getCursorPosition(rows, cols);          // Query actual cursor position
+    } else {
+        *cols = ws.ws_col;                             // Store terminal width
+        *rows = ws.ws_row;                             // Store terminal height
+        return 0;
+    }
+}
 
 /*** Input Handling ***/
-
-/*
- * Processes a single keypress.
- *
- * Ctrl-Q:
- *  - Clears the screen
- *  - Repositions the cursor
- *  - Exits the program cleanly
- *
- * Clearing the screen prevents leftover editor artifacts
- * from remaining in the user's terminal.
- */
-
 void editorProcessKeypress(void) {
-  char c = editorReadKey();
+    char c = editorReadKey();                          // Read one keypress
 
-  switch (c) {
-    case CTRL_KEY('q'):
-    write(STDOUT_FILENO,"\x1b[2J",4);
-    write(STDOUT_FILENO,"\x1b[H",3);
-
-      exit(0);
-      break;
-  }
+    switch (c) {
+        case CTRL_KEY('q'):                            // Ctrl-Q pressed
+            write(STDOUT_FILENO, "\x1b[2J", 4);        // Clear screen
+            write(STDOUT_FILENO, "\x1b[H", 3);         // Move cursor home
+            exit(0);                                  // Exit cleanly
+    }
 }
-
-
-
-
-
-
-
 
 /*** Output Handling ***/
-
-/*
- * Draws the editor rows to the screen.
- *
- * For now, this function renders a placeholder screen:
- *  - Each row contains a '~' character (like vim)
- *  - Followed by carriage return + newline to move to the next line
- *
- * The '~' indicates lines that are outside the file buffer.
- * This is temporary and will later be replaced by actual file contents.
- */
-void editorDrawRows(void){
+void editorDrawRows(void) {
     int y;
 
-    /*
-     * Loop over each visible row of the terminal.
-     *
-     * Currently hardcoded to 24 rows.
-     * This will later be replaced by dynamically
-     * detecting the terminal window size.
-     */
-    for (y = 0; y < E.screenrows; y++){
-        /*
-         * "~"   → visual placeholder for empty lines
-         * "\r\n" → carriage return + newline
-         *
-         * We use write() instead of printf() because:
-         *  - It is unbuffered
-         *  - It works predictably in raw mode
-         */
-        write(STDOUT_FILENO, "~", 1);
-        if (y<E.screenrows-1){
-            write(STDOUT_FILENO,"\r\n",2);
-            }
+    for (y = 0; y < E.screenrows; y++) {               // Loop through visible rows
+        write(STDOUT_FILENO, "~", 1);                  // Placeholder for empty line
+        if (y < E.screenrows - 1)
+            write(STDOUT_FILENO, "\r\n", 2);           // Move to next line
     }
 }
 
-
-
-
-
-/*
- * Refreshes the terminal screen.
- *
- * \x1b[2J → ANSI escape code to clear the entire screen
- * \x1b[H  → Move the cursor to the top-left corner (row 1, col 1)
- *
- * This function will later be expanded to:
- *  - Draw file contents
- *  - Render status bars
- *  - Position the cursor correctly
- */
-
-
-void editorRefreshScreen(void){
-    write(STDOUT_FILENO,"\x1b[2J",4);//clear entire screen
-    write(STDOUT_FILENO,"\x1b[H",3);//position the cursor to the top
-    editorDrawRows();
-    write(STDOUT_FILENO,"\x1b[H",3);
-    }
-
-
+void editorRefreshScreen(void) {
+    write(STDOUT_FILENO, "\x1b[2J", 4);                // Clear screen
+    write(STDOUT_FILENO, "\x1b[H", 3);                 // Move cursor home
+    editorDrawRows();                                  // Draw editor contents
+    write(STDOUT_FILENO, "\x1b[H", 3);                 // Reset cursor position
+}
 
 /*** Init ***/
+void initEditor(void) {
+    if (getWindowSize(&E.screenrows, &E.screencols) == -1)
+        die("getWindowSize");                          // Abort if terminal size fails
+}
 
-void initEditor(void){
-    if(getWindowSize(&E.screenrows,&E.screencols)==-1)die("getWindowSize");
+int main(void) {
+    enableRawMode();                                   // Enable raw input mode
+    initEditor();                                      // Initialize editor state
+
+    while (1) {
+        editorRefreshScreen();                         // Redraw screen
+        editorProcessKeypress();                       // Handle input
     }
 
-
-
-
-
-
-
-
-
-/*
- * Program entry point.
- *
- * Enables raw mode and enters the editor loop.
- *
- * Loop structure:
- *  1. Clear and redraw the screen
- *  2. Wait for and process a keypress
- *
- * This mirrors the basic render-input cycle
- * used in most interactive terminal programs.
- */
-int main(void) {
-  enableRawMode();
-  initEditor();
-
-  while (1) {
-     editorRefreshScreen();
-
-    editorProcessKeypress();
-  }
-
-  return 0;
+    return 0;
 }
 
