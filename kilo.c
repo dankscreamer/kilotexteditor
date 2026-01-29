@@ -185,6 +185,42 @@ void editorProcessKeypress(void) {
 
 
 /*** Output Handling ***/
+
+/*
+ * Draws the editor rows to the screen.
+ *
+ * For now, this function renders a placeholder screen:
+ *  - Each row contains a '~' character (like vim)
+ *  - Followed by carriage return + newline to move to the next line
+ *
+ * The '~' indicates lines that are outside the file buffer.
+ * This is temporary and will later be replaced by actual file contents.
+ */
+void editorDrawRows(void){
+    int y;
+
+    /*
+     * Loop over each visible row of the terminal.
+     *
+     * Currently hardcoded to 24 rows.
+     * This will later be replaced by dynamically
+     * detecting the terminal window size.
+     */
+    for (y = 0; y < 24; y++){
+        /*
+         * "~"   → visual placeholder for empty lines
+         * "\r\n" → carriage return + newline
+         *
+         * We use write() instead of printf() because:
+         *  - It is unbuffered
+         *  - It works predictably in raw mode
+         */
+        write(STDOUT_FILENO, "~\r\n", 3);
+    }
+}
+
+
+
 /*
  * Refreshes the terminal screen.
  *
@@ -201,6 +237,8 @@ void editorProcessKeypress(void) {
 void editorRefreshScreen(void){
     write(STDOUT_FILENO,"\x1b[2J",4);//clear entire screen
     write(STDOUT_FILENO,"\x1b[H",3);//position the cursor to the top
+    editorDrawRows();
+    write(STDOUT_FILENO,"\x1b[H",3);
     }
 
 
