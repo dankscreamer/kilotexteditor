@@ -35,9 +35,19 @@ struct termios orig_termios;
 
 /*
  * Fatal error handler.
- * Prints an error message based on errno and exits immediately.
+ *
+ * Before printing the error, we:
+ *  - Clear the screen
+ *  - Move the cursor to the top-left corner
+ *
+ * This ensures the error message is visible even if the editor
+ * was mid-draw when the failure occurred.
  */
+
 void die(const char *s) {
+     write(STDOUT_FILENO,"\x1b[2J",4);
+    write(STDOUT_FILENO,"\x1b[H",3);
+
   perror(s);
   exit(1);
 }
@@ -145,34 +155,79 @@ char editorReadKey(void) {
 /*
  * Processes a single keypress.
  *
- * Currently supports:
- *  - Ctrl-Q : quit the editor
+ * Ctrl-Q:
+ *  - Clears the screen
+ *  - Repositions the cursor
+ *  - Exits the program cleanly
  *
- * This function will later handle cursor movement,
- * text insertion, deletion, etc.
+ * Clearing the screen prevents leftover editor artifacts
+ * from remaining in the user's terminal.
  */
+
 void editorProcessKeypress(void) {
   char c = editorReadKey();
 
   switch (c) {
     case CTRL_KEY('q'):
+    write(STDOUT_FILENO,"\x1b[2J",4);
+    write(STDOUT_FILENO,"\x1b[H",3);
+
       exit(0);
       break;
   }
 }
 
-/*** Initialization & Main Loop ***/
+
+
+
+
+
+
+
+/*** Output Handling ***/
+/*
+ * Refreshes the terminal screen.
+ *
+ * \x1b[2J → ANSI escape code to clear the entire screen
+ * \x1b[H  → Move the cursor to the top-left corner (row 1, col 1)
+ *
+ * This function will later be expanded to:
+ *  - Draw file contents
+ *  - Render status bars
+ *  - Position the cursor correctly
+ */
+
+
+void editorRefreshScreen(void){
+    write(STDOUT_FILENO,"\x1b[2J",4);//clear entire screen
+    write(STDOUT_FILENO,"\x1b[H",3);//position the cursor to the top
+    }
+
+
+
+
+
+
+
 
 /*
  * Program entry point.
  *
- * Enables raw mode and enters an infinite loop
- * processing one keypress at a time.
+ * Enables raw mode and enters the editor loop.
+ *
+ * Loop structure:
+ *  1. Clear and redraw the screen
+ *  2. Wait for and process a keypress
+ *
+ * This mirrors the basic render-input cycle
+ * used in most interactive terminal programs.
  */
 int main(void) {
   enableRawMode();
 
   while (1) {
+     editorRefreshScreen();
+
     editorProcessKeypress();
   }
 
