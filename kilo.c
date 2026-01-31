@@ -91,7 +91,14 @@ int getWindowSize(int *rows, int *cols) {
         *rows = ws.ws_row;                             // Store terminal height
         return 0;
     }
+
 }
+/***Append Buffer ***/
+struct abuf{
+    char *b;
+    int len;
+    };
+#define ABUF_INIT {NULL, 0};
 
 /*** Input Handling ***/
 void editorProcessKeypress(void) {
