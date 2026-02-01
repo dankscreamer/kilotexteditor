@@ -130,7 +130,7 @@ void editorRefreshScreen(void) {
     write(STDOUT_FILENO, "\x1b[H", 3);                 // Reset cursor position
 }
 
-/*** Init ***/
+/** Init ***/
 void initEditor(void) {
     if (getWindowSize(&E.screenrows, &E.screencols) == -1)
         die("getWindowSize");                          // Abort if terminal size fails
