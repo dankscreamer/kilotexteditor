@@ -14,6 +14,7 @@
 
 /*** Global Data ***/
 struct editorConfig {
+    int cx,cy;                     // cursor coordinates
     int screenrows;                // number of terminal rows
     int screencols;                // number of terminal columns
     struct termios orig_termios;   // original terminal settings backup
@@ -115,6 +116,37 @@ void abFree(struct abuf *ab) {              // free append buffer
 }
 
 /*** Input Handling ***/
+void editorMoveCursor(char key){
+    switch(key){
+        case 'a':
+            E.cx--;
+
+            break;
+        case 'd':
+            E.cx++;
+            break;
+        case 'w':
+            E.cy++;
+            break;
+        case 's':
+            E.cy--;
+            break;
+
+            
+        
+
+        
+
+        }
+    }
+
+
+
+
+
+
+
+
 void editorProcessKeypress(void) {           // handle keypress
     char c = editorReadKey();                // read key
 
@@ -123,7 +155,17 @@ void editorProcessKeypress(void) {           // handle keypress
             write(STDOUT_FILENO, "\x1b[2J", 4); // clear screen
             write(STDOUT_FILENO, "\x1b[H", 3);  // move cursor home
             exit(0);                            // exit editor
+            break;
+        case 'w':
+        case 's':
+        case 'a':
+        case 'd':
+        editorMoveCursor(c);
+        break;
+
+
     }
+   
 }
 
 /*** Output Handling ***/
@@ -153,8 +195,17 @@ void editorRefreshScreen(void) {              // redraw entire screen
 
     abAppend(&ab, "\x1b[?25l", 6);             // hide cursor
     abAppend(&ab, "\x1b[H", 3);                // move cursor home
+
     editorDrawRows(&ab);                       // draw rows
-    abAppend(&ab, "\x1b[H", 3);                // reset cursor
+
+    char buf[32];
+    snprintf(buf, sizeof(buf),"\x1b[%d;%dH",E.cy+1,E.cx+1);
+    abAppend(&ab,buf,strlen(buf));
+
+
+
+
+                              
     abAppend(&ab, "\x1b[?25h", 6);             // show cursor
 
     write(STDOUT_FILENO, ab.b, ab.len);        // write buffer to terminal
@@ -163,6 +214,8 @@ void editorRefreshScreen(void) {              // redraw entire screen
 
 /*** Init ***/
 void initEditor(void) {                        // initialize editor
+    E.cx=0;
+    E.cy=0;
     if (getWindowSize(&E.screenrows, &E.screencols) == -1) // get terminal size
         die("getWindowSize");                  // abort on failure
 }
