@@ -50,16 +50,28 @@ void enableRawMode(void) {            // enable raw input mode
 
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw); // apply raw mode
 }
-
-char editorReadKey(void) {     // read a single keypress
-    int nread;                 // bytes read
-    char c;                    // character read
-
-    while ((nread = read(STDIN_FILENO, &c, 1)) != 1) { // keep reading until 1 byte
-        if (nread == -1 && errno != EAGAIN)            // ignore temporary read errors
-            die("read");                               // abort on real error
+char editorReadKey(void) {
+  int nread;
+  char c;
+  while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
+    if (nread == -1 && errno != EAGAIN) die("read");
+  }
+  if (c == '\x1b') {
+    char seq[3];
+    if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1b';
+    if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\x1b';
+    if (seq[0] == '[') {
+      switch (seq[1]) {
+        case 'A': return 'w';
+        case 'B': return 's';
+        case 'C': return 'd';
+        case 'D': return 'a';
+      }
     }
-    return c;                                          // return key pressed
+    return '\x1b';
+  } else {
+    return c;
+  }
 }
 
 int getCursorPosition(int *rows, int *cols) { // get cursor position from terminal
