@@ -12,12 +12,11 @@
 #define CTRL_KEY(k) ((k) & 0x1f)   // maps Ctrl+<key> to ASCII control code
 #define KILO_VERSION "0.0.1"       // editor version string
 enum editorKey {
-  ARROW_LEFT = 'a',
-  ARROW_RIGHT = 'd',
-  ARROW_UP = 'w',
-  ARROW_DOWN = 's'
+  ARROW_LEFT = 1000,
+  ARROW_RIGHT,
+  ARROW_UP,
+  ARROW_DOWN
 };
-
 /*** Global Data ***/
 struct editorConfig {
     int cx,cy;                     // cursor coordinates
@@ -56,7 +55,7 @@ void enableRawMode(void) {            // enable raw input mode
 
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw); // apply raw mode
 }
-char editorReadKey(void) {
+int editorReadKey(void) {
   int nread;
   char c;
   while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
@@ -71,7 +70,8 @@ char editorReadKey(void) {
         case 'A': return ARROW_UP;
         case 'B': return ARROW_DOWN;
         case 'C': return ARROW_RIGHT;
-        case 'D': return ARROW_LEFT;      }
+        case 'D': return ARROW_LEFT;
+      }
     }
     return '\x1b';
   } else {
@@ -133,30 +133,33 @@ void abFree(struct abuf *ab) {              // free append buffer
 }
 
 /*** Input Handling ***/
-void editorMoveCursor(char key){
-    switch(key){
-        case 'a':
-            E.cx--;
 
-            break;
-        case 'd':
-            E.cx++;
-            break;
-        case 'w':
-            E.cy++;
-            break;
-        case 's':
-            E.cy--;
-            break;
 
-            
-        
 
-        
-
-        }
-    }
-
+void editorMoveCursor(int key) {
+  switch (key) {
+    case ARROW_LEFT:
+      if (E.cx != 0) {
+        E.cx--;
+      }
+      break;
+    case ARROW_RIGHT:
+      if (E.cx != E.screencols - 1) {
+        E.cx++;
+      }
+      break;
+    case ARROW_UP:
+      if (E.cy != 0) {
+        E.cy--;
+      }
+      break;
+    case ARROW_DOWN:
+      if (E.cy != E.screenrows - 1) {
+        E.cy++;
+      }
+      break;
+  }
+}
 
 
 
@@ -165,7 +168,7 @@ void editorMoveCursor(char key){
 
 
 void editorProcessKeypress(void) {           // handle keypress
-    char c = editorReadKey();                // read key
+    int  c = editorReadKey();                // read key
 
     switch (c) {
         case CTRL_KEY('q'):                  // Ctrl-Q pressed
@@ -173,10 +176,10 @@ void editorProcessKeypress(void) {           // handle keypress
             write(STDOUT_FILENO, "\x1b[H", 3);  // move cursor home
             exit(0);                            // exit editor
             break;
-        case 'w':
-        case 's':
-        case 'a':
-        case 'd':
+       case ARROW_UP:
+       case ARROW_DOWN:
+       case ARROW_LEFT:
+       case ARROW_RIGHT:
         editorMoveCursor(c);
         break;
 
