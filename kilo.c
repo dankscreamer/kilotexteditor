@@ -203,6 +203,14 @@ void editorProcessKeypress(void) {           // handle keypress
             write(STDOUT_FILENO, "\x1b[H", 3);  // move cursor home
             exit(0);                            // exit editor
             break;
+        case HOME_KEY:
+            E.cx = 0;
+             break;
+        case END_KEY:
+             E.cx = E.screencols - 1;
+             break;
+            
+
        case ARROW_UP:
        case ARROW_DOWN:
        case ARROW_LEFT:
