@@ -108,7 +108,7 @@ int editorReadKey(void) {
   }
 }
 
-int getCursorPosition(int *rows, int *cols) { // get cursor position from terminal
+int getCursorPosition(int *rows, int *cols { // get cursor position from terminal
     char buf[32];                              // response buffer
     unsigned int i = 0;                        // buffer index
 
