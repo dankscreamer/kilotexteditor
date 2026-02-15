@@ -10,7 +10,7 @@
 
 /*** Macros ***/
 #define CTRL_KEY(k) ((k) & 0x1f)   // maps Ctrl+<key> to ASCII control code
-#define KILO_VERSION "0.0.1"       // editor version string
+#define KILO_VERSION "0.0.1"       // editor version strig
 enum editorKey {
   ARROW_LEFT = 1000,
   ARROW_RIGHT,
